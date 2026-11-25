@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
 const CFG = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+CFG.upstreamKey = process.env.UPSTREAM_KEY || CFG.upstreamKey;   // override so a leaked key can be rotated without editing the repo
 const PUB = path.join(__dirname, 'public');
 const DATA = path.join(__dirname, 'data');
 fs.mkdirSync(DATA, { recursive: true });   // fresh clone has no data/ (gitignored)

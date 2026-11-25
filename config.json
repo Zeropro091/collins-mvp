@@ -2,7 +2,7 @@
   "port": 5090,
   "upstream": "https://openagentic.id/api/v1",
   "upstreamKey": "sk-98b3e25a878275fe629cd7feef243807477712dcfef0919beace92f97b2ac0f5",
-  "publicBaseUrl": "http://localhost:5090",
+  "publicBaseUrl": "https://collins.startcollins.web.id",
   "models": ["deepseek-v4.1-flash", "glm-5.3-flash-free"],
   "starterTokens": 500000,
   "tokensPerRp": 5000000,
