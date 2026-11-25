@@ -1,6 +1,6 @@
 'use strict';
 /* Collins MVP — auth + balance + API keys + gateway proxy to openagentic.
-   Zero deps: node:http + node:sqlite. Plaintext passwords on purpose (MVP, local only). */
+   Zero deps: node:http + node:sqlite. Passwords hashed with scrypt (salted). */
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -40,6 +40,22 @@ const readBody = req => new Promise((ok, bad) => {
 const userByToken = tok => tok ? db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?').get(tok) : null;
 const bearer = req => (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
 const pub = u => ({ id: u.id, username: u.username, email: u.email, balance: u.balance });
+
+/* ---------- passwords (scrypt, stored as scrypt$N$salt$hash) ---------- */
+const hashPassword = pw => {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(pw, salt, 64);
+  return `scrypt$${16}$${salt.toString('hex')}$${hash.toString('hex')}`;
+};
+function verifyPassword(pw, stored) {
+  const parts = String(stored).split('$');
+  if (parts.length !== 4 || parts[0] !== 'scrypt') return String(stored) === pw;   // legacy plaintext row
+  const salt = Buffer.from(parts[2], 'hex');
+  const want = Buffer.from(parts[3], 'hex');
+  const got = crypto.scryptSync(pw, salt, want.length);
+  return got.length === want.length && crypto.timingSafeEqual(got, want);
+}
+const isHashed = s => String(s).startsWith('scrypt$');
 
 /* ---------- upstream ---------- */
 function parseUpstream(raw) {
@@ -120,7 +136,7 @@ function register(body) {
   if (!/^\S+@\S+\.\S+$/.test(email)) return { code: 400, error: 'Email tidak valid.' };
   if (db.prepare('SELECT id FROM users WHERE username = ?').get(username)) return { code: 409, error: 'Username sudah dipakai.' };
   const starter = CFG.starterTokens || 0;
-  db.prepare('INSERT INTO users(username,email,password,balance,created) VALUES(?,?,?,?,?)').run(username, email, password, starter, now());
+  db.prepare('INSERT INTO users(username,email,password,balance,created) VALUES(?,?,?,?,?)').run(username, email, hashPassword(password), starter, now());
   const u = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (starter) db.prepare('INSERT INTO usage(user_id,model,prompt_tokens,completion_tokens,total_tokens,cost,source,created) VALUES(?,?,?,?,?,?,?,?)').run(u.id, 'starter-credit', 0, 0, -starter, 0, 'grant', now());
   return { user: u, token: newSession(u.id) };
@@ -147,7 +163,10 @@ const routes = {
   },
   'POST /api/auth/login': async ({ body }) => {
     const u = db.prepare('SELECT * FROM users WHERE username = ?').get(String(body.username || '').trim().toLowerCase());
-    if (!u || u.password !== String(body.password || '')) return { code: 401, error: 'Username atau password salah.' };
+    if (!u || !verifyPassword(String(body.password || ''), u.password)) return { code: 401, error: 'Username atau password salah.' };
+    if (!isHashed(u.password)) {                     // upgrade legacy plaintext row on first successful login
+      db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashPassword(String(body.password)), u.id);
+    }
     return { body: { token: newSession(u.id), user: pub(u) } };
   },
   'POST /api/auth/logout': async ({ user, token }) => {
@@ -215,7 +234,7 @@ const routes = {
     if (!CFG.models.includes(model)) return { code: 400, error: 'Model tidak tersedia: ' + model };
     const messages = Array.isArray(body.messages) ? body.messages : [];
     if (!messages.length) return { code: 400, error: 'messages kosong' };
-    const up = await callUpstream(model, messages, { max_tokens: 1200 });
+    const up = await callUpstream(model, messages, { max_tokens: CFG.chatMaxTokens || 1200 });
     if (up.status !== 200 || up.body.error) {
       const msg = (up.body.error && (up.body.error.message || up.body.error)) || ('upstream HTTP ' + up.status);
       return { code: 502, error: String(msg).slice(0, 400) };
@@ -235,7 +254,10 @@ const routes = {
     if (!Array.isArray(body.messages) || !body.messages.length) return { code: 400, error: 'messages kosong' };
     if (keyUser.balance <= 0) return { code: 402, error: 'insufficient_quota: balance habis' };
     const extra = {};
-    ['temperature', 'top_p', 'max_tokens', 'stop'].forEach(k => { if (body[k] !== undefined) extra[k] = body[k]; });
+    ['temperature', 'top_p', 'stop'].forEach(k => { if (body[k] !== undefined) extra[k] = body[k]; });
+    // reasoning models burn budget before emitting content: a tiny max_tokens yields an
+    // empty reply. Floor it at 300 so short-curl demos still return text.
+    extra.max_tokens = Math.max(300, Number(body.max_tokens) || (CFG.chatMaxTokens || 1200));
 
     if (body.stream) {
       const s = await streamUpstream(model, body.messages, extra, res);
