@@ -18,7 +18,11 @@ CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE NO
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created INTEGER);
 CREATE TABLE IF NOT EXISTS api_keys(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, key TEXT UNIQUE NOT NULL, label TEXT, created INTEGER, last_used INTEGER, revoked INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS usage(id INTEGER PRIMARY KEY, user_id INTEGER, key_id INTEGER, model TEXT, prompt_tokens INTEGER, completion_tokens INTEGER, total_tokens INTEGER, cost REAL, source TEXT, created INTEGER);
+CREATE TABLE IF NOT EXISTS vouchers(code TEXT PRIMARY KEY, tokens INTEGER NOT NULL, max_uses INTEGER NOT NULL DEFAULT 1, uses INTEGER NOT NULL DEFAULT 0, created INTEGER);
+CREATE TABLE IF NOT EXISTS voucher_redemptions(id INTEGER PRIMARY KEY, code TEXT NOT NULL, user_id INTEGER NOT NULL, tokens INTEGER NOT NULL, created INTEGER, UNIQUE(code, user_id));
 `);
+// seed the starter voucher once; re-running create is a no-op
+db.prepare('INSERT OR IGNORE INTO vouchers(code,tokens,max_uses,uses,created) VALUES(?,?,?,?,?)').run('123123', 15000, 1000, 0, Date.now());
 
 const now = () => Date.now();
 const json = (res, code, obj) => {
@@ -175,6 +179,22 @@ const routes = {
     db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(tokens, user.id);
     db.prepare('INSERT INTO usage(user_id,model,prompt_tokens,completion_tokens,total_tokens,cost,source,created) VALUES(?,?,?,?,?,?,?,?)').run(user.id, 'ads-convert', 0, 0, -tokens, 0, 'grant', now());
     return { body: { tokens, rp, balance: db.prepare('SELECT balance FROM users WHERE id = ?').get(user.id).balance } };
+  },
+  'POST /api/voucher/redeem': async ({ user, body }) => {
+    const code = String(body.code || '').trim();
+    if (!code) return { code: 400, error: 'Kode voucher kosong.' };
+    const v = db.prepare('SELECT * FROM vouchers WHERE code = ?').get(code);
+    if (!v) return { code: 404, error: 'Kode voucher tidak ditemukan.' };
+    if (v.uses >= v.max_uses) return { code: 409, error: 'Voucher sudah habis dipakai.' };
+    if (db.prepare('SELECT id FROM voucher_redemptions WHERE code = ? AND user_id = ?').get(code, user.id)) {
+      return { code: 409, error: 'Kamu sudah pernah pakai voucher ini.' };
+    }
+    db.prepare('UPDATE vouchers SET uses = uses + 1 WHERE code = ?').run(code);
+    db.prepare('INSERT INTO voucher_redemptions(code,user_id,tokens,created) VALUES(?,?,?,?)').run(code, user.id, v.tokens, now());
+    db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(v.tokens, user.id);
+    db.prepare('INSERT INTO usage(user_id,model,prompt_tokens,completion_tokens,total_tokens,cost,source,created) VALUES(?,?,?,?,?,?,?,?)')
+      .run(user.id, 'voucher:' + code, 0, 0, -v.tokens, 0, 'grant', now());
+    return { body: { code, tokens: v.tokens, balance: db.prepare('SELECT balance FROM users WHERE id = ?').get(user.id).balance } };
   },
   'GET /api/usage': async ({ user }) => ({
     body: {
