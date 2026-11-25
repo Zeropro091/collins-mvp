@@ -9,7 +9,9 @@ const { DatabaseSync } = require('node:sqlite');
 
 const CFG = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
 const PUB = path.join(__dirname, 'public');
-const db = new DatabaseSync(path.join(__dirname, 'data', 'collins.db'));
+const DATA = path.join(__dirname, 'data');
+fs.mkdirSync(DATA, { recursive: true });   // fresh clone has no data/ (gitignored)
+const db = new DatabaseSync(path.join(DATA, 'collins.db'));
 db.exec(`
 CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, email TEXT, password TEXT NOT NULL, balance INTEGER NOT NULL DEFAULT 0, created INTEGER);
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created INTEGER);
