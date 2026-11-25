@@ -159,7 +159,10 @@ const routes = {
     body: {
       base_url: CFG.publicBaseUrl + '/api/v1',
       models: CFG.models,
-      keys: db.prepare('SELECT id,key,label,created,last_used,revoked FROM api_keys WHERE user_id = ? ORDER BY id DESC').all(user.id)
+      keys: db.prepare(`SELECT k.id, k.key, k.label, k.created, k.last_used, k.revoked,
+        (SELECT COUNT(*) FROM usage u WHERE u.key_id = k.id AND u.source = 'chat') runs,
+        (SELECT COALESCE(SUM(u.total_tokens),0) FROM usage u WHERE u.key_id = k.id AND u.source = 'chat') tokens
+        FROM api_keys k WHERE k.user_id = ? ORDER BY k.id DESC`).all(user.id)
     }
   }),
   'POST /api/keys': async ({ user, body }) => {
@@ -199,7 +202,8 @@ const routes = {
   'GET /api/usage': async ({ user }) => ({
     body: {
       balance: user.balance,
-      recent: db.prepare("SELECT model,prompt_tokens,completion_tokens,total_tokens,cost,source,created FROM usage WHERE user_id = ? AND source = 'chat' ORDER BY id DESC LIMIT 50").all(user.id),
+      recent: db.prepare("SELECT u.model, u.prompt_tokens, u.completion_tokens, u.total_tokens, u.cost, u.source, u.created, COALESCE(k.label,'session') key_label FROM usage u LEFT JOIN api_keys k ON k.id = u.key_id WHERE u.user_id = ? AND u.source = 'chat' ORDER BY u.id DESC LIMIT 50").all(user.id),
+      by_key: db.prepare("SELECT COALESCE(k.label,'session') key_label, COUNT(*) runs, SUM(u.prompt_tokens) pt, SUM(u.completion_tokens) ct, SUM(u.total_tokens) tt FROM usage u LEFT JOIN api_keys k ON k.id = u.key_id WHERE u.user_id = ? AND u.source = 'chat' GROUP BY u.key_id ORDER BY tt DESC").all(user.id),
       totals: db.prepare("SELECT COUNT(*) runs, COALESCE(SUM(prompt_tokens),0) pt, COALESCE(SUM(completion_tokens),0) ct, COALESCE(SUM(total_tokens),0) tt, COALESCE(SUM(cost),0) cost FROM usage WHERE user_id = ? AND source = 'chat'").get(user.id)
     }
   }),

@@ -896,7 +896,7 @@ async function api(p, opts = {}) {
 function renderApiKeys(keys) {
   const el = $('#api-keys'); if (!el) return;
   el.innerHTML = keys.length
-    ? keys.map(k => `<div class="flex items-center gap-2 ${k.revoked ? 'opacity-40' : ''}"><code class="flex-1 truncate">${k.key}</code><button class="text-[#f2a7a7] hover:underline" onclick="revokeApiKey(${k.id})">${k.revoked ? 'revoked' : 'revoke'}</button></div>`).join('')
+    ? keys.map(k => `<div class="flex items-center gap-2 ${k.revoked ? 'opacity-40' : ''}"><code class="flex-1 truncate" title="${k.key}">${k.key}</code><span class="text-[10px] text-[#6f6f6a] shrink-0">${k.runs} req · ${fmtTok(k.tokens)} tok</span><button class="text-[#f2a7a7] hover:underline shrink-0" onclick="revokeApiKey(${k.id})">${k.revoked ? 'revoked' : 'revoke'}</button></div>`).join('')
     : '<div class="text-[#6f6f6a]">Belum ada API key.</div>';
 }
 function loadApiKeys() {
