@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collins — Masuk</title>
+<style>
+  :root { --bg:#0b0b0a; --panel:#111110; --line:#2c2c29; --text:#ecece8; --dim:#8a8a86; --cyan:#67dcf2; --red:#f16b6b; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px; background:var(--bg); color:var(--text);
+         font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .card { width:100%; max-width:380px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:26px; }
+  .brand { font:600 15px ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:-.01em; margin-bottom:2px; }
+  .brand span { color:var(--cyan); }
+  .sub { color:var(--dim); font-size:12px; margin-bottom:22px; }
+  .tabs { display:flex; gap:6px; margin-bottom:18px; background:#0b0b0a; border:1px solid var(--line); border-radius:9px; padding:3px; }
+  .tabs button { flex:1; background:none; border:0; color:var(--dim); font:500 12.5px inherit; padding:7px; border-radius:7px; cursor:pointer; }
+  .tabs button[aria-selected="true"] { background:#1c1c1a; color:#fff; }
+  label { display:block; font-size:11.5px; color:var(--dim); margin:12px 0 5px; }
+  input { width:100%; padding:9px 11px; background:#0b0b0a; border:1px solid var(--line); border-radius:8px; color:var(--text);
+          font:13px ui-monospace,SFMono-Regular,Menlo,monospace; outline:none; }
+  input:focus { border-color:#4a6f78; }
+  .btn { width:100%; margin-top:20px; padding:10px; border:0; border-radius:8px; background:var(--cyan); color:#04181c;
+         font:600 13px inherit; cursor:pointer; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .msg { margin-top:14px; font-size:12px; min-height:16px; color:var(--red); }
+  .foot { margin-top:20px; font:11px ui-monospace,monospace; color:#6f6f6a; text-align:center; }
+  .foot a { color:var(--dim); text-decoration:none; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">collins<span>.</span></div>
+  <div class="sub">Gateway token · masuk untuk lanjut ke workstation</div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="login">Masuk</button>
+    <button role="tab" aria-selected="false" data-tab="register">Daftar</button>
+  </div>
+
+  <form id="login-form">
+    <label for="l-user">Username</label>
+    <input id="l-user" autocomplete="username" required>
+    <label for="l-pass">Password</label>
+    <input id="l-pass" type="password" autocomplete="current-password" required>
+    <button class="btn" type="submit">Masuk</button>
+  </form>
+
+  <form id="register-form" class="hidden">
+    <label for="r-user">Username</label>
+    <input id="r-user" autocomplete="username" required>
+    <label for="r-pass">Password</label>
+    <input id="r-pass" type="password" autocomplete="new-password" required>
+    <label for="r-pass2">Ulangi password</label>
+    <input id="r-pass2" type="password" autocomplete="new-password" required>
+    <label for="r-email">Email</label>
+    <input id="r-email" type="email" autocomplete="email" required>
+    <button class="btn" type="submit">Buat akun</button>
+  </form>
+
+  <div class="msg" id="msg" role="status" aria-live="polite"></div>
+  <div class="foot"><a href="index.html">← balik ke collins.dev</a></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const token = localStorage.getItem('collins-token');
+if (token) location.replace('/workstation.html');
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+  $('#login-form').classList.toggle('hidden', b.dataset.tab !== 'login');
+  $('#register-form').classList.toggle('hidden', b.dataset.tab !== 'register');
+  $('#msg').textContent = '';
+});
+
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  return d;
+}
+function done(d) {
+  // workstation.html reads through its JSON store, so persist JSON-encoded
+  localStorage.setItem('collins-token', JSON.stringify(d.token));
+  localStorage.setItem('collins-user', JSON.stringify(d.user.username));
+  location.replace('/workstation.html');
+}
+
+$('#login-form').onsubmit = async e => {
+  e.preventDefault(); $('#msg').textContent = '';
+  try { done(await post('/api/auth/login', { username: $('#l-user').value, password: $('#l-pass').value })); }
+  catch (err) { $('#msg').textContent = err.message; }
+};
+$('#register-form').onsubmit = async e => {
+  e.preventDefault(); $('#msg').textContent = '';
+  try {
+    done(await post('/api/auth/register', {
+      username: $('#r-user').value, password: $('#r-pass').value,
+      password2: $('#r-pass2').value, email: $('#r-email').value
+    }));
+  } catch (err) { $('#msg').textContent = err.message; }
+};
+</script>
+</body>
+</html>
