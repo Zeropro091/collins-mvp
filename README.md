@@ -5,7 +5,8 @@ Frontend asli dari `venelrangga288-arch/collins` + backend sendiri. Semua lokal,
 ## Jalanin
 
 ```bash
-node server.js          # atau double-click start.bat
+node server.js          # server saja
+start-all.bat           # server + cloudflared tunnel sekaligus (dua jendela, tanpa autostart)
 ```
 
 Buka http://localhost:5090 → otomatis ke `/login.html` → Daftar / Masuk → workstation.
@@ -60,8 +61,9 @@ node voucher.js reset 123123                  # hapus semua pemakaian, kuota pen
 
 ## Batasan MVP (sengaja)
 
-- Password **plaintext** di SQLite (`data/collins.db`) — jangan dipakai publik.
+- Password **di-hash scrypt** (salted) di SQLite. Row plaintext lama di-upgrade otomatis saat login, atau `node migrate-passwords.js` untuk sekaligus.
 - Streaming SSE **didukung** (`stream:true` diproksi apa adanya, usage tetap dipotong dari saldo).
+- `max_tokens` di-floor 300 — reasoning model bikin jawaban kosong kalau budget-nya kekecilan.
 - `glm-5.3-flash-free` sering `502 no_capacity` dari provider upstream; error-nya diteruskan apa adanya.
 - Session token di localStorage, tanpa refresh/expiry.
 - Agent "steps/diffs" simulasi di UI sudah tidak dipakai (diganti jawaban real).
