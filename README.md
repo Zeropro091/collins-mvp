@@ -19,6 +19,7 @@ Buka http://localhost:5090 → otomatis ke `/login.html` → Daftar / Masuk → 
 | Saldo user | `GET /api/me` |
 | Bikin / revoke API key | `POST /api/keys`, `GET /api/keys`, `DELETE /api/keys?id=` |
 | Iklan → Rp → token (Rp10.000 = 50.000.000.000 token) | `POST /api/credit/convert` |
+| Tukar voucher → tambah saldo wallet | `POST /api/voucher/redeem` |
 | Chat dari UI workstation | `POST /api/chat` |
 | API publik (Bearer `collins_live_...`) | `GET /api/v1/models`, `POST /api/v1/chat/completions` |
 | Riwayat pemakaian | `GET /api/usage` |
@@ -38,6 +39,20 @@ curl http://localhost:5090/api/v1/chat/completions \
 2. Tonton iklan di tab Ads → Convert Rp ke token.
 3. Setiap request lewat Collins memotong saldo sebesar `total_tokens` dari upstream.
 4. Saldo 0 → `402 insufficient_quota`.
+
+## Voucher
+
+Voucher menambah saldo wallet (token). Bawaan: kode **`123123`** = **15.000 token**, 1000x pakai, 1x per user.
+
+Tukar dari UI: **Settings → Voucher** → isi kode → Tukar.
+
+Kelola voucher (tanpa server, langsung ke DB):
+
+```bash
+node voucher.js list                          # lihat semua + sisa kuota
+node voucher.js create KODE 15000 1000        # kode baru, 15.000 tok, 1000x pakai
+node voucher.js reset 123123                  # hapus semua pemakaian, kuota penuh lagi
+```
 
 ## Config (`config.json`)
 
